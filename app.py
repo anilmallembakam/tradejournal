@@ -103,15 +103,16 @@ def logout_button():
         st.rerun()
 
 def ensure_rules_row(user_id: str):
-    # Create default row if missing
     existing = sb.table("risk_rules").select("*").eq("user_id", user_id).execute()
     if not existing.data:
         sb.table("risk_rules").insert({
-        "daily_max_loss": 100,
-        "daily_max_trades": 5,
-        "max_risk_per_trade": 50,
-        "cooldown_after_losses": 2
+            "user_id": user_id,
+            "daily_max_loss": 100,
+            "daily_max_trades": 5,
+            "max_risk_per_trade": 50,
+            "cooldown_after_losses": 2
         }).execute()
+
 
 
 def get_rules(user_id: str):
@@ -375,4 +376,5 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
