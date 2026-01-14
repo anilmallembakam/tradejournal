@@ -211,11 +211,18 @@ trades = q.execute().data
 if page == "Dashboard":
     st.title("Dashboard")
 
-    trades = fetch_trades(user_id, start_iso=start_today, end_iso=start_tomorrow)
+    # Apply selected range
+    if start is None:
+        trades = fetch_trades(user_id)  # ALL TIME
+    else:
+        start_iso = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc).isoformat()
+        trades = fetch_trades(user_id, start_iso=start_iso)
+
     df = pd.DataFrame(trades)
 
+
     if df.empty:
-        st.info("No trades found for today. Import a CSV to start.")
+        st.info("No trades found for this period.")
         st.stop()
 
     # Normalize types
@@ -485,6 +492,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
