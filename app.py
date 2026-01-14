@@ -288,12 +288,12 @@ elif page == "Import Trades (CSV)":
         out = pd.DataFrame()
         out["trade_datetime"] = df[col_dt].apply(parse_dt)
         out["symbol"] = df[col_symbol].astype(str).str.upper().str.strip()
-
+        out["symbol"] = out["symbol"].astype(str)
         if col_side != "(none)":
             out["side"] = df[col_side].astype(str).str.upper().str.strip()
             out["side"] = out["side"].where(out["side"].isin(["BUY","SELL"]), default_side)
         else:
-            out["side"] = default_side
+            out["side"] = out["side"].astype(str)
 
         out["qty"] = pd.to_numeric(df[col_qty], errors="coerce")
         out["entry_price"] = pd.to_numeric(df[col_entry], errors="coerce")
@@ -344,9 +344,12 @@ elif page == "Import Trades (CSV)":
         if col_side:
             out["side"] = df[col_side].astype(str).str.upper().str.strip()
         else:
-            out["side"] = default_side
+            out["side"] = out["side"].astype(str)
 
 
+        # ---- CLEAN NUMERIC DATA FOR JSON ----
+        out = out.replace([float("inf"), float("-inf")], 0)
+        out = out.fillna(0)
 
         # Insert rows
         rows = []
@@ -421,6 +424,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
