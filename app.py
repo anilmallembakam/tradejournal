@@ -269,8 +269,15 @@ elif page == "Import Trades (CSV)":
     col_side = st.selectbox("Side column (BUY/SELL) — optional", ["(none)"] + cols)
     col_qty = st.selectbox("Quantity column", cols)
     col_entry = st.selectbox("Entry price column", cols)
-    col_exit = st.selectbox("Exit price column", cols)
+    col_exit = st.selectbox(
+    "Exit price column (optional)",
+    ["(none)"] + cols
+    )
     col_fees = st.selectbox("Fees column — optional", ["(none)"] + cols)
+    pnl_col = st.selectbox(
+    "PnL / Amount column (broker ledger files)",
+    ["(none)"] + cols
+    )
 
     default_side = st.selectbox("If no Side column, assume:", ["BUY", "SELL"], index=0)
 
@@ -301,22 +308,25 @@ elif page == "Import Trades (CSV)":
         out = out.dropna(subset=["trade_datetime", "symbol", "qty", "entry_price", "exit_price"])
 
         # Clean Amount column like ($150.06)
-        def parse_amount(x):
-            if pd.isna(x):
-                return 0.0
-            s = str(x).replace("$", "").replace(",", "").strip()
-            if s.startswith("(") and s.endswith(")"):
-                s = "-" + s[1:-1]
-            try:
+        if ledger_mode:
+            # Ledger mode (Robinhood)
+            
+            def parse_amount(x):
+                if pd.isna(x): return 0.0
+                s = str(x).replace("$","").replace(",","").strip()
+                if s.startswith("(") and s.endswith(")"):
+                    s = "-" + s[1:-1]
                 return float(s)
-            except:
-                return 0.0
         
-        out["pnl"] = df["Amount"].apply(parse_amount)
-        
-        # Keep only real trade rows
-        out = out[~out["symbol"].isna()]
-        out = out[out["symbol"].astype(str).str.strip() != ""]
+            out["pnl"] = df[pnl_col].apply(parse_amount)
+            out["entry_price"] = pd.to_numeric(df[col_entry], errors="coerce")
+            out["exit_price"] = 0
+        else:
+            # Completed trades mode (existing logic)
+            out["pnl"] = (out["exit_price"] - out["entry_price"]) * out["qty"]
+
+        if col_side:
+            df = df[df[col_side].isin(["BTO","STC","STO","BTC","BUY","SELL"])]
 
 
         # Insert rows
@@ -392,6 +402,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
