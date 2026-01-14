@@ -312,9 +312,9 @@ elif page == "Import Trades (CSV)":
                 "symbol": r["symbol"],
                 "side": r["side"],
                 "qty": float(r["qty"]),
-                "entry_price": float(r["entry_price"]),
-                "exit_price": float(r["exit_price"]),
-                "fees": float(r["fees"]),
+                "entry_price": float(r["entry_price"]) if not pd.isna(r["entry_price"]) else 0,
+                "exit_price": 0,
+                "fees": 0,
                 "pnl": float(r["pnl"]),
             })
 
@@ -376,5 +376,6 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
