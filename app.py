@@ -286,7 +286,7 @@ elif page == "Import Trades (CSV)":
 
         # Build normalized df
         out = pd.DataFrame()
-        out["trade_datetime"] = df[col_dt].apply(parse_dt)
+        out["trade_datetime"] = pd.to_datetime(df[col_dt],errors="coerce")
         out["symbol"] = df[col_symbol].astype(str).str.upper().str.strip()
         out["symbol"] = out["symbol"].astype(str)
         if col_side != "(none)":
@@ -347,9 +347,17 @@ elif page == "Import Trades (CSV)":
             out["side"] = out["side"].astype(str)
 
 
-        # ---- CLEAN NUMERIC DATA FOR JSON ----
+        # Replace inf only
         out = out.replace([float("inf"), float("-inf")], 0)
-        out = out.fillna(0)
+        
+        # Fill NaN only for numeric columns (NOT datetime)
+        for c in ["qty", "entry_price", "exit_price", "fees", "pnl"]:
+            if c in out.columns:
+                out[c] = out[c].fillna(0)
+        
+        # Drop rows with missing datetime
+        out = out.dropna(subset=["trade_datetime"])
+
 
         # Insert rows
         rows = []
@@ -424,6 +432,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
