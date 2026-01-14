@@ -311,14 +311,36 @@ elif page == "Import Trades (CSV)":
 
         # Drop bad rows
         out = out.dropna(subset=["trade_datetime", "symbol", "qty", "entry_price", "exit_price"])
-
-        # --- Filter only real trade rows FIRST ---
-        if col_side:
-            df = df[df[col_side].astype(str).isin(["BTO","STC","STO","BTC","BUY","SELL"])]
         
-        # --- Ledger mode (Robinhood / activity files) ---
+        # ------------------------# 1. NORMALIZE SIDE FIRST
+        # ------------------------
+        if col_side and col_side != "(none)":
+            df[col_side] = df[col_side].astype(str).str.upper().str.strip()
+        
+        # ------------------------
+        # 2. FILTER ONLY TRADES
+        # ------------------------
+        if col_side and col_side != "(none)":
+            df = df[df[col_side].isin(["BTO","STC","STO","BTC","BUY","SELL"])]
+        
+        # ------------------------
+        # 3. BUILD OUT AFTER FILTER
+        # ------------------------
+        out = pd.DataFrame()
+        
+        out["trade_datetime"] = pd.to_datetime(df[col_dt], errors="coerce")
+        out["symbol"] = df[col_symbol].astype(str)
+        out["qty"] = pd.to_numeric(df[col_qty], errors="coerce")
+        
+        if col_entry != "(none)":
+            out["entry_price"] = pd.to_numeric(df[col_entry], errors="coerce")
+        else:
+            out["entry_price"] = 0.0
+        
+        # ------------------------
+        # 4. LEDGER MODE
+        # ------------------------
         if pnl_col != "(none)":
-            ledger_mode = True
         
             def parse_amount(x):
                 if pd.isna(x): 
@@ -332,32 +354,37 @@ elif page == "Import Trades (CSV)":
                     return 0.0
         
             out["pnl"] = df[pnl_col].apply(parse_amount)
-            out["entry_price"] = pd.to_numeric(df[col_entry], errors="coerce")
             out["exit_price"] = 0.0
         
-        # --- Completed trade mode ---
         else:
-            ledger_mode = False
+            out["exit_price"] = pd.to_numeric(df[col_exit], errors="coerce")
             out["pnl"] = (out["exit_price"] - out["entry_price"]) * out["qty"]
         
-        # --- Normalize side ---
-        if col_side:
-            out["side"] = df[col_side].astype(str).str.upper().str.strip()
+        # ------------------------
+        # 5. SIDE
+        # ------------------------
+        if col_side and col_side != "(none)":
+            out["side"] = df[col_side]
         else:
-            out["side"] = out["side"].astype(str)
-
-
-        # Replace inf only
+            out["side"] = default_side
+        
+        # ------------------------
+        # 6. CLEAN SAFELY
+        # ------------------------
         out = out.replace([float("inf"), float("-inf")], 0)
         
-        # Fill NaN only for numeric columns (NOT datetime)
-        for c in ["qty", "entry_price", "exit_price", "fees", "pnl"]:
-            if c in out.columns:
-                out[c] = out[c].fillna(0)
+        for c in ["qty","entry_price","exit_price","pnl"]:
+            out[c] = out[c].fillna(0)
         
-        # Drop rows with missing datetime
         out = out.dropna(subset=["trade_datetime"])
-
+        
+        # ------------------------
+        # 7. FINAL SAFETY CHECK
+        # ------------------------
+        if out.empty:
+            st.error("No valid trade rows found after filtering.")
+            st.stop()
+        
 
         # Insert rows
         rows = []
@@ -432,6 +459,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
