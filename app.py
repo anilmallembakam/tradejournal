@@ -209,72 +209,126 @@ trades = q.execute().data
 # Dashboard
 # ----------------------------
 if page == "Dashboard":
+
     st.title("Dashboard")
 
-    # Apply selected range
-    if start is None:
-        trades = fetch_trades(user_id)  # ALL TIME
+    range_option = st.selectbox(
+        "View",
+        ["Today", "Last 7 days", "Last 30 days", "All time"]
+    )
+
+    today = datetime.utcnow().date()
+
+    if range_option == "Today":
+        start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+        end = start + pd.Timedelta(days=1)
+    elif range_option == "Last 7 days":
+        start = datetime.combine(today - pd.Timedelta(days=7), datetime.min.time(), tzinfo=timezone.utc)
+        end = None
+    elif range_option == "Last 30 days":
+        start = datetime.combine(today - pd.Timedelta(days=30), datetime.min.time(), tzinfo=timezone.utc)
+        end = None
     else:
-        start_iso = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc).isoformat()
-        trades = fetch_trades(user_id, start_iso=start_iso)
+        start = None
+        end = None
+
+    if start:
+        trades = fetch_trades(user_id, start.isoformat(), end.isoformat() if end else None)
+    else:
+        trades = fetch_trades(user_id)
 
     df = pd.DataFrame(trades)
-
 
     if df.empty:
         st.info("No trades found for this period.")
         st.stop()
 
-    # Normalize types
     df["trade_datetime"] = pd.to_datetime(df["trade_datetime"], utc=True)
     df["pnl"] = pd.to_numeric(df["pnl"], errors="coerce").fillna(0)
 
-    today_pnl, trade_count, loss_streak = compute_today_metrics(df)
+    # ======================================================
+    # 🟥 RISK MODE (TODAY)
+    # ======================================================
+    if range_option == "Today":
 
-    daily_max_loss = float(rules["daily_max_loss"])
-    daily_max_trades = int(rules["daily_max_trades"])
-    cooldown_after_losses = int(rules["cooldown_after_losses"])
+        st.subheader("🟥 Risk Mode — Intraday Control")
 
-    # Risk status
-    loss_limit_hit = today_pnl <= -abs(daily_max_loss)
-    trades_limit_hit = trade_count >= daily_max_trades
-    cooldown_hit = loss_streak >= cooldown_after_losses
+        today_pnl, trade_count, loss_streak = compute_today_metrics(df)
 
-    status = "OK"
-    if loss_limit_hit or trades_limit_hit or cooldown_hit:
-        status = "LOCKED"
-    elif (today_pnl <= -0.7 * abs(daily_max_loss)) or (trade_count >= int(0.7 * daily_max_trades)):
-        status = "WARNING"
+        daily_max_loss = float(rules["daily_max_loss"])
+        daily_max_trades = int(rules["daily_max_trades"])
+        cooldown_after_losses = int(rules["cooldown_after_losses"])
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Today's P/L", money(today_pnl))
-    c2.metric("Trades Today", trade_count)
-    c3.metric("Loss Streak", loss_streak)
-    c4.metric("Risk Status", status)
+        loss_limit_hit = today_pnl <= -abs(daily_max_loss)
+        trades_limit_hit = trade_count >= daily_max_trades
+        cooldown_hit = loss_streak >= cooldown_after_losses
 
-    # Progress bars
-    st.subheader("Risk Meter")
-    loss_progress = min(1.0, max(0.0, (-today_pnl) / abs(daily_max_loss))) if daily_max_loss != 0 else 0.0
-    trades_progress = min(1.0, trade_count / max(1, daily_max_trades))
+        status = "OK"
+        if loss_limit_hit or trades_limit_hit or cooldown_hit:
+            status = "LOCKED"
+        elif (today_pnl <= -0.7 * abs(daily_max_loss)) or (trade_count >= int(0.7 * daily_max_trades)):
+            status = "WARNING"
 
-    st.write("Daily loss usage")
-    st.progress(loss_progress)
-    st.write("Daily trade count usage")
-    st.progress(trades_progress)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Today's P/L", money(today_pnl))
+        c2.metric("Trades Today", trade_count)
+        c3.metric("Loss Streak", loss_streak)
+        c4.metric("Risk Status", status)
 
-    if status == "LOCKED":
-        reasons = []
-        if loss_limit_hit:
-            reasons.append(f"Daily max loss hit ({money(daily_max_loss)})")
-        if trades_limit_hit:
-            reasons.append(f"Daily max trades hit ({daily_max_trades})")
-        if cooldown_hit:
-            reasons.append(f"Cooldown triggered (loss streak ≥ {cooldown_after_losses})")
-        st.error("LOCKED — Stop trading for today.\n\n" + "\n".join([f"- {r}" for r in reasons]))
+        st.subheader("Risk Meter")
 
-    st.subheader("Today’s trades")
-    show_cols = ["trade_datetime", "symbol", "side", "qty", "entry_price", "exit_price", "fees", "pnl"]
-    st.dataframe(df[show_cols].sort_values("trade_datetime", ascending=False), use_container_width=True)
+        loss_progress = min(1.0, max(0.0, (-today_pnl) / abs(daily_max_loss))) if daily_max_loss else 0
+        trades_progress = min(1.0, trade_count / max(1, daily_max_trades))
+
+        st.write("Daily loss usage")
+        st.progress(loss_progress)
+
+        st.write("Daily trade count usage")
+        st.progress(trades_progress)
+
+        if status == "LOCKED":
+            reasons = []
+            if loss_limit_hit:
+                reasons.append(f"Daily max loss hit ({money(daily_max_loss)})")
+            if trades_limit_hit:
+                reasons.append(f"Daily max trades hit ({daily_max_trades})")
+            if cooldown_hit:
+                reasons.append(f"Cooldown triggered (loss streak ≥ {cooldown_after_losses})")
+            st.error("LOCKED — Stop trading for today.\n\n" + "\n".join([f"- {r}" for r in reasons]))
+
+        st.subheader("Today’s trades")
+        st.dataframe(
+            df.sort_values("trade_datetime", ascending=False),
+            use_container_width=True
+        )
+
+    # ======================================================
+    # 🟦 PERFORMANCE MODE (7 / 30 / ALL)
+    # ======================================================
+    else:
+
+        st.subheader("🟦 Performance Mode — Trading Analytics")
+
+        total_pnl = df["pnl"].sum()
+        win_rate = (df["pnl"] > 0).mean() * 100
+        avg_trade = df["pnl"].mean()
+        best = df["pnl"].max()
+        worst = df["pnl"].min()
+        trades_count = len(df)
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Total P/L", money(total_pnl))
+        c2.metric("Trades", trades_count)
+        c3.metric("Win rate", f"{win_rate:.1f}%")
+        c4.metric("Avg trade", money(avg_trade))
+        c5.metric("Best trade", money(best))
+
+        st.subheader("All trades")
+        st.dataframe(
+            df.sort_values("trade_datetime", ascending=False),
+            use_container_width=True
+        )
+
 
 # ----------------------------
 # Import CSV
@@ -492,6 +546,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
