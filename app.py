@@ -181,6 +181,30 @@ start_tomorrow = (datetime(today.year, today.month, today.day, tzinfo=timezone.u
 
 rules = get_rules(user_id)
 
+range_option = st.selectbox(
+    "View",
+    ["Today", "Last 7 days", "Last 30 days", "All time"]
+)
+
+today = datetime.utcnow().date()
+
+if range_option == "Today":
+    start = today
+elif range_option == "Last 7 days":
+    start = today - timedelta(days=7)
+elif range_option == "Last 30 days":
+    start = today - timedelta(days=30)
+else:
+    start = None  
+
+# all time
+q = sb.table("trades").select("*").eq("user_id", user_id)
+
+if start:
+    q = q.gte("trade_datetime", str(start))
+
+trades = q.execute().data
+
 # ----------------------------
 # Dashboard
 # ----------------------------
@@ -461,6 +485,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
