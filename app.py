@@ -297,36 +297,55 @@ elif page == "Import Trades (CSV)":
 
         out["qty"] = pd.to_numeric(df[col_qty], errors="coerce")
         out["entry_price"] = pd.to_numeric(df[col_entry], errors="coerce")
-        out["exit_price"] = pd.to_numeric(df[col_exit], errors="coerce")
+        if col_exit != "(none)":
+            out["exit_price"] = pd.to_numeric(df[col_exit], errors="coerce")
+        else:
+            out["exit_price"] = 0.0
+
 
         if col_fees != "(none)":
-            out["fees"] = pd.to_numeric(df[col_fees], errors="coerce").fillna(0)
+            out["fees"] = pd.to_numeric(df[col_fees], errors="coerce")
         else:
             out["fees"] = 0.0
+
 
         # Drop bad rows
         out = out.dropna(subset=["trade_datetime", "symbol", "qty", "entry_price", "exit_price"])
 
-        # Clean Amount column like ($150.06)
-        if ledger_mode:
-            # Ledger mode (Robinhood)
-            
+        # --- Filter only real trade rows FIRST ---
+        if col_side:
+            df = df[df[col_side].astype(str).isin(["BTO","STC","STO","BTC","BUY","SELL"])]
+        
+        # --- Ledger mode (Robinhood / activity files) ---
+        if pnl_col != "(none)":
+            ledger_mode = True
+        
             def parse_amount(x):
-                if pd.isna(x): return 0.0
+                if pd.isna(x): 
+                    return 0.0
                 s = str(x).replace("$","").replace(",","").strip()
                 if s.startswith("(") and s.endswith(")"):
                     s = "-" + s[1:-1]
-                return float(s)
+                try:
+                    return float(s)
+                except:
+                    return 0.0
         
             out["pnl"] = df[pnl_col].apply(parse_amount)
             out["entry_price"] = pd.to_numeric(df[col_entry], errors="coerce")
-            out["exit_price"] = 0
+            out["exit_price"] = 0.0
+        
+        # --- Completed trade mode ---
         else:
-            # Completed trades mode (existing logic)
+            ledger_mode = False
             out["pnl"] = (out["exit_price"] - out["entry_price"]) * out["qty"]
-
+        
+        # --- Normalize side ---
         if col_side:
-            df = df[df[col_side].isin(["BTO","STC","STO","BTC","BUY","SELL"])]
+            out["side"] = df[col_side].astype(str).str.upper().str.strip()
+        else:
+            out["side"] = default_side
+
 
 
         # Insert rows
@@ -402,6 +421,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
