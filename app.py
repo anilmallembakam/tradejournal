@@ -257,7 +257,7 @@ elif page == "Import Trades (CSV)":
         st.info("Upload a CSV to continue.")
         st.stop()
 
-    raw = pd.read_csv(up)
+    raw = pd.read_csv(up, engine="python", on_bad_lines="skip")
     st.write("Preview:")
     st.dataframe(raw.head(20), use_container_width=True)
 
@@ -300,8 +300,24 @@ elif page == "Import Trades (CSV)":
         # Drop bad rows
         out = out.dropna(subset=["trade_datetime", "symbol", "qty", "entry_price", "exit_price"])
 
-        # Compute pnl
-        out["pnl"] = out.apply(calc_pnl, axis=1)
+        # Clean Amount column like ($150.06)
+        def parse_amount(x):
+            if pd.isna(x):
+                return 0.0
+            s = str(x).replace("$", "").replace(",", "").strip()
+            if s.startswith("(") and s.endswith(")"):
+                s = "-" + s[1:-1]
+            try:
+                return float(s)
+            except:
+                return 0.0
+        
+        out["pnl"] = df["Amount"].apply(parse_amount)
+        
+        # Keep only real trade rows
+        out = out[~out["symbol"].isna()]
+        out = out[out["symbol"].astype(str).str.strip() != ""]
+
 
         # Insert rows
         rows = []
@@ -376,6 +392,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
