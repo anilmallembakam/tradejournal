@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 from dateutil import parser
 from supabase import create_client, Client
 
@@ -492,6 +492,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
