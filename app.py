@@ -385,6 +385,8 @@ elif page == "Import Trades (CSV)":
             st.error("No valid trade rows found after filtering.")
             st.stop()
         
+        # Convert pandas Timestamp to string for JSON
+        out["trade_datetime"] = out["trade_datetime"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
         # Insert rows
         rows = []
@@ -459,6 +461,7 @@ elif page == "Trades":
     c2.metric("Win rate", f"{(df['pnl'] > 0).mean()*100:.1f}%")
     avg = df["pnl"].mean() if len(df) else 0
     c3.metric("Avg trade P/L", money(avg))
+
 
 
 
